@@ -144,14 +144,14 @@ impl MessageSender {
 
 // Load Cities.json
 async fn load_cities() -> Result<Vec<City>, String> {
-    let cities_json = Asset::get("Cities.json").ok_or("Failed to load Cities.json")?;
+    let cities_json = Asset::get("cities.json").ok_or("Failed to load cities.json")?;
     let cities: Vec<City> = serde_json::from_slice(&cities_json.data).map_err(|e| e.to_string())?;
     Ok(cities)
 }
 
 // Get the zone number based on zone_en (translated from Hebrew city name)
 fn get_zone_number(zone_en: &str) -> Option<u32> {
-    // Zone 1: Northern Frontier
+    // Zone 1: Northern
     if [
         "Upper Galilee",
         "Confrontation Line",
@@ -161,10 +161,10 @@ fn get_zone_number(zone_en: &str) -> Option<u32> {
     ]
         .contains(&zone_en)
     {
-        return Some(1); // Northern Frontier
+        return Some(1); // Northern
     }
 
-    // Zone 2: Coastal North
+    // Zone 2: NorthCost
     if [
         "HaMifratz",
         "HaCarmel",
@@ -172,10 +172,10 @@ fn get_zone_number(zone_en: &str) -> Option<u32> {
     ]
         .contains(&zone_en)
     {
-        return Some(2); // Coastal North
+        return Some(2); // NorthCoast
     }
 
-    // Zone 3: Interior North
+    // Zone 3: InterNorth
     if [
         "Lower Galilee",
         "Beit She'an Valley",
@@ -184,7 +184,7 @@ fn get_zone_number(zone_en: &str) -> Option<u32> {
     ]
         .contains(&zone_en)
     {
-        return Some(3); // Interior North
+        return Some(3); // InterNorth
     }
 
     // Zone 4: Central Coast
@@ -252,54 +252,61 @@ async fn find_zone_for_city(cities: &Vec<City>, city_name_he: &str) -> Option<u3
 }
 
 // Main logic to send alerts to appropriate zones
-async fn process_alert(sender: &mut MessageSender, args: &Args) -> Result<(), String> {
+async fn process_alert(sender: &mut MessageSender, args: &Args, cities: &Vec<City>) -> Result<(), String> {
     // Load city data
-    let cities = load_cities().await?;
+
 
     // Fetch the current alert (from the API)
     let alert_result = fetch_alert(false).await.unwrap();
 
-    // Check if the alert contains "drill" or "test" (case insensitive)
-    if alert_result.alert_type.to_lowercase().contains("drill") || alert_result.alert_type.to_lowercase().contains("test") {
-        log::info!("Received a drill or test alert: {}", alert_result.alert_type);
-        return Ok(());  // Skip sending the message
-    }
-
-    // Prepare a set to store valid zones
-    let mut valid_zones = HashSet::new();
-
-    // Find the zones for each city in the alert
-    for city in alert_result.cities {
-        if let Some(zone) = find_zone_for_city(&cities, &city).await {
-            valid_zones.insert(zone);
+    // Only proceed if there is an actual alert
+    if (!alert_result.alert_type.contains("none")) {
+        // Check if the alert contains "drill" or "test" (case insensitive)
+        if alert_result.alert_type.to_lowercase().contains("drill") || alert_result.alert_type.to_lowercase().contains("test") {
+            log::info!("Received a drill or test alert: {}", alert_result.alert_type);
+            return Ok(());  // Skip sending the message
         }
-    }
 
-    // Create the formatted message based on the reason and instructions
-    let message = format!("🚨{} - {:?}", alert_result.alert_type, alert_result.instructions);
+        // Prepare a set to store valid zones
+        let mut valid_zones = HashSet::new();
 
-    // Determine which channels to send the alert to
-    if valid_zones.len() == 7 {
-        // If all zones are valid, send to channel 0
-        sender
-            .send_message_with_retry(0, &message, 3, Duration::from_secs(5), args)
-            .await?;
-    } else {
-        // Send to each valid zone
-        for zone in valid_zones {
+        // Find the zones for each city in the alert
+        for city in alert_result.cities {
+            if let Some(zone) = find_zone_for_city(&cities, &city).await {
+                    valid_zones.insert(zone);
+            }
+        }
+
+        // Create the formatted message based on the reason and instructions
+        let message = if let Some(instructions) = &alert_result.instructions {
+            format!("🚨{} - {:?}", alert_result.alert_type, instructions)
+        } else {
+            format!("🚨{}", alert_result.alert_type)
+        };
+        // Determine which channels to send the alert to
+        if valid_zones.len() > 6 {
+            // If all zones are valid, send to channel 0
             sender
-                .send_message_with_retry(zone, &message, 3, Duration::from_secs(5), args)
+                .send_message_with_retry(0, &message, 3, Duration::from_secs(5), args)
                 .await?;
+        } else {
+            // Send to each valid zone
+            for zone in valid_zones {
+                sender
+                    .send_message_with_retry(zone, &message, 3, Duration::from_secs(5), args)
+                    .await?;
+            }
         }
     }
 
-    Ok(())
+        Ok(())
+
 }
 
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Initialize logging
+        // Initialize logging
     SimpleLogger::new()
         .with_level(LevelFilter::Info) // Set to Debug to capture more logs
         .init()
@@ -307,6 +314,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Parse command-line arguments
     let args = Args::parse();
+
+    let cities = load_cities().await?;
 
     // Check node connection before starting the loop
     if let Err(e) = check_node_connection(&args).await {
@@ -326,10 +335,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         interval.tick().await;
 
         // Handle process_alert errors without exiting the loop
-        if let Err(e) = process_alert(&mut sender, &args).await {
+        if let Err(e) = process_alert(&mut sender, &args, &cities).await {
             log::error!("Error processing alert: {}", e);
-            // Optionally, you can add a small delay before the next iteration to avoid tight looping
-            tokio::time::sleep(Duration::from_secs(1)).await;
         }
     }
 }
