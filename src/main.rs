@@ -151,33 +151,95 @@ async fn load_cities() -> Result<Vec<City>, String> {
 
 // Get the zone number based on zone_en (translated from Hebrew city name)
 fn get_zone_number(zone_en: &str) -> Option<u32> {
-    if ["Upper Galilee", "Confrontation Line", "North Golan", "Center Galilee", "HaAmakim"]
+    // Zone 1: Northern Frontier
+    if [
+        "Upper Galilee",
+        "Confrontation Line",
+        "North Golan",
+        "South Golan",
+        "Center Galilee",
+    ]
         .contains(&zone_en)
     {
-        return Some(1);
+        return Some(1); // Northern Frontier
     }
-    if ["Sharon", "West Lachish", "HaMifratz", "Gaza Envelope", "Dead Sea"].contains(&zone_en) {
-        return Some(2);
-    }
-    if ["Lachish", "West Negev", "South Negev", "Eilat"].contains(&zone_en) {
-        return Some(3);
-    }
-    if ["Dan", "Jerusalem", "Shfelat Yehuda", "HaShfela"].contains(&zone_en) {
-        return Some(4);
-    }
-    if ["Beit She'an Valley", "Lower Galilee", "Bika'a", "South Golan", "Menashe"]
+
+    // Zone 2: Coastal North
+    if [
+        "HaMifratz",
+        "HaCarmel",
+        "Menashe",
+    ]
         .contains(&zone_en)
     {
-        return Some(5);
+        return Some(2); // Coastal North
     }
-    if ["Center Negev", "Arava", "Yehuda"].contains(&zone_en) {
-        return Some(6);
+
+    // Zone 3: Interior North
+    if [
+        "Lower Galilee",
+        "Beit She'an Valley",
+        "HaAmakim",
+        "Wadi Ara",
+    ]
+        .contains(&zone_en)
+    {
+        return Some(3); // Interior North
     }
-    if ["Wadi Ara", "Shomron", "Yarkon"].contains(&zone_en) {
-        return Some(7);
+
+    // Zone 4: Central Coast
+    if [
+        "Sharon",
+        "Yarkon",
+        "Dan",
+    ]
+        .contains(&zone_en)
+    {
+        return Some(4); // Central Coast
     }
-    None
+
+    // Zone 5: Central Interior
+    if [
+        "Shomron",
+        "Jerusalem",
+        "Yehuda",
+        "Shfelat Yehuda",
+        "Bika'a",
+    ]
+        .contains(&zone_en)
+    {
+        return Some(5); // Central Interior
+    }
+
+    // Zone 6: Southern Coast
+    if [
+        "Gaza Envelope",
+        "West Lachish",
+        "Lachish",
+        "HaShfela",
+    ]
+        .contains(&zone_en)
+    {
+        return Some(6); // Southern Coast
+    }
+
+    // Zone 7: Desert Region
+    if [
+        "West Negev",
+        "Center Negev",
+        "South Negev",
+        "Dead Sea",
+        "Arava",
+        "Eilat",
+    ]
+        .contains(&zone_en)
+    {
+        return Some(7); // Desert Region
+    }
+
+    None // Return None if the zone_en does not match any known zones
 }
+
 
 // Find zone for a city in Hebrew
 async fn find_zone_for_city(cities: &Vec<City>, city_name_he: &str) -> Option<u32> {
