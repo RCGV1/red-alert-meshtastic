@@ -82,6 +82,10 @@ struct Args {
     /// Network address with port of device to connect to in the form of target.address:port
     #[arg(long)]
     host: Option<String>,
+
+    /// Zones to ignore when sending alerts
+    #[arg(long, num_args = 1.., value_delimiter = ' ')]
+    ignore: Option<HashSet<u32>>,
 }
 
 struct MessageSender {
@@ -120,7 +124,7 @@ impl MessageSender {
             if let Some(host) = &args.host {
                 command.arg("--host").arg(host);
             }
-
+            log::info!("Sending an alert with content: {}", message);
             let result = command.spawn();
             match result {
                 Ok(_) => {
@@ -151,7 +155,7 @@ async fn load_cities() -> Result<Vec<City>, String> {
 
 // Get the zone number based on zone_en (translated from Hebrew city name)
 fn get_zone_number(zone_en: &str) -> Option<u32> {
-    // Zone 1: Northern
+    // Zone 1: Northern (average time: 24.65 seconds)
     if [
         "Upper Galilee",
         "Confrontation Line",
@@ -164,18 +168,19 @@ fn get_zone_number(zone_en: &str) -> Option<u32> {
         return Some(1); // Northern
     }
 
-    // Zone 2: NorthCost
+    // Zone 2: Southern Coast (average time: 51.23 seconds)
     if [
-        "HaMifratz",
-        "HaCarmel",
-        "Menashe",
+        "Gaza Envelope",
+        "West Lachish",
+        "Lachish",
+        "HaShfela",
     ]
         .contains(&zone_en)
     {
-        return Some(2); // NorthCoast
+        return Some(2); // Southern Coast
     }
 
-    // Zone 3: InterNorth
+    // Zone 3: InterNorth (average time: 65.07 seconds)
     if [
         "Lower Galilee",
         "Beit She'an Valley",
@@ -187,43 +192,7 @@ fn get_zone_number(zone_en: &str) -> Option<u32> {
         return Some(3); // InterNorth
     }
 
-    // Zone 4: Central Coast
-    if [
-        "Sharon",
-        "Yarkon",
-        "Dan",
-    ]
-        .contains(&zone_en)
-    {
-        return Some(4); // Central Coast
-    }
-
-    // Zone 5: Central Interior
-    if [
-        "Shomron",
-        "Jerusalem",
-        "Yehuda",
-        "Shfelat Yehuda",
-        "Bika'a",
-    ]
-        .contains(&zone_en)
-    {
-        return Some(5); // Central Interior
-    }
-
-    // Zone 6: Southern Coast
-    if [
-        "Gaza Envelope",
-        "West Lachish",
-        "Lachish",
-        "HaShfela",
-    ]
-        .contains(&zone_en)
-    {
-        return Some(6); // Southern Coast
-    }
-
-    // Zone 7: Desert Region
+    // Zone 4: Desert Region (average time: 67.70 seconds)
     if [
         "West Negev",
         "Center Negev",
@@ -234,11 +203,35 @@ fn get_zone_number(zone_en: &str) -> Option<u32> {
     ]
         .contains(&zone_en)
     {
-        return Some(7); // Desert Region
+        return Some(4); // Desert Region
+    }
+
+    // Zone 5: North Coast (average time: 72.81 seconds)
+    if ["HaMifratz", "HaCarmel", "Menashe"].contains(&zone_en) {
+        return Some(5); // North Coast
+    }
+
+    // Zone 6: Central Interior (average time: 86.87 seconds)
+    if [
+        "Shomron",
+        "Jerusalem",
+        "Yehuda",
+        "Shfelat Yehuda",
+        "Bika'a",
+    ]
+        .contains(&zone_en)
+    {
+        return Some(6); // Central Interior
+    }
+
+    // Zone 7: Central Coast (average time: 90.00 seconds)
+    if ["Sharon", "Yarkon", "Dan"].contains(&zone_en) {
+        return Some(7); // Central Coast
     }
 
     None // Return None if the zone_en does not match any known zones
 }
+
 
 
 // Find zone for a city in Hebrew
@@ -267,15 +260,36 @@ async fn process_alert(sender: &mut MessageSender, args: &Args, cities: &Vec<Cit
             return Ok(());  // Skip sending the message
         }
 
-        // Prepare a set to store valid zones
-        let mut valid_zones = HashSet::new();
+        // Prepare a vector to store valid zones (for maintaining order)
+        let mut valid_zones = Vec::new();
+        // Extract ignored zones if any
+        let ignored_zones: HashSet<u32> = match &args.ignore {
+            Some(ignored) => ignored.iter().cloned().collect(),
+            None => HashSet::new(),
+        };
+
+        for city in alert_result.cities {
+            if let Some(zone) = find_zone_for_city(&cities, &city).await {
+                // Add the zone to the vector if it's not already there and not ignored
+                if !valid_zones.contains(&zone) && !ignored_zones.contains(&zone) {
+                    valid_zones.push(zone);
+                }
+            }
+        }
 
         // Find the zones for each city in the alert
         for city in alert_result.cities {
             if let Some(zone) = find_zone_for_city(&cities, &city).await {
-                    valid_zones.insert(zone);
+                // Add the zone to the vector if it's not already there
+                if !valid_zones.contains(&zone) {
+                    valid_zones.push(zone);
+                }
             }
         }
+
+        // Sort the zones to send messages in the correct order
+        valid_zones.sort();
+
 
         // Create the formatted message based on the reason and instructions
         let message = if let Some(instructions) = &alert_result.instructions {
@@ -283,20 +297,26 @@ async fn process_alert(sender: &mut MessageSender, args: &Args, cities: &Vec<Cit
         } else {
             format!("🚨{}", alert_result.alert_type)
         };
+
+
         // Determine which channels to send the alert to
-        if valid_zones.len() > 6 {
-            // If all zones are valid, send to channel 0
+        if valid_zones.is_empty() {
+            log::info!("No valid zones to send the alert to after ignoring specified zones.");
+            return Ok(());  // No zones left to send an alert to
+        } else if valid_zones.len() + ignored_zones.len() > 6 {
+            // If all non-ignored zones are valid, send to channel 0
             sender
                 .send_message_with_retry(0, &message, 3, Duration::from_secs(5), args)
                 .await?;
         } else {
-            // Send to each valid zone
+            // Send to each valid zone in the sorted order
             for zone in valid_zones {
                 sender
                     .send_message_with_retry(zone, &message, 3, Duration::from_secs(5), args)
                     .await?;
             }
         }
+
     }
 
         Ok(())
