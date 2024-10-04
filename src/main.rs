@@ -168,7 +168,7 @@ fn get_zone_number(zone_en: &str) -> Option<u32> {
         return Some(1); // Northern
     }
 
-    // Zone 2: Southern Coast (average time: 51.23 seconds)
+    // Zone 2: SouthCoast (average time: 51.23 seconds)
     if [
         "Gaza Envelope",
         "West Lachish",
@@ -177,7 +177,7 @@ fn get_zone_number(zone_en: &str) -> Option<u32> {
     ]
         .contains(&zone_en)
     {
-        return Some(2); // Southern Coast
+        return Some(2); // SouthCoast
     }
 
     // Zone 3: InterNorth (average time: 65.07 seconds)
@@ -192,7 +192,7 @@ fn get_zone_number(zone_en: &str) -> Option<u32> {
         return Some(3); // InterNorth
     }
 
-    // Zone 4: Desert Region (average time: 67.70 seconds)
+    // Zone 4: DesertRegion (average time: 67.70 seconds)
     if [
         "West Negev",
         "Center Negev",
@@ -203,15 +203,15 @@ fn get_zone_number(zone_en: &str) -> Option<u32> {
     ]
         .contains(&zone_en)
     {
-        return Some(4); // Desert Region
+        return Some(4); // DesertRegion
     }
 
-    // Zone 5: North Coast (average time: 72.81 seconds)
+    // Zone 5: NorthCoast (average time: 72.81 seconds)
     if ["HaMifratz", "HaCarmel", "Menashe"].contains(&zone_en) {
-        return Some(5); // North Coast
+        return Some(5); // NorthCoast
     }
 
-    // Zone 6: Central Interior (average time: 86.87 seconds)
+    // Zone 6: CentralInter (average time: 86.87 seconds)
     if [
         "Shomron",
         "Jerusalem",
@@ -221,12 +221,12 @@ fn get_zone_number(zone_en: &str) -> Option<u32> {
     ]
         .contains(&zone_en)
     {
-        return Some(6); // Central Interior
+        return Some(6); // CentralInter
     }
 
-    // Zone 7: Central Coast (average time: 90.00 seconds)
+    // Zone 7: CentralCoast (average time: 90.00 seconds)
     if ["Sharon", "Yarkon", "Dan"].contains(&zone_en) {
-        return Some(7); // Central Coast
+        return Some(7); // CentralCoast
     }
 
     None // Return None if the zone_en does not match any known zones
